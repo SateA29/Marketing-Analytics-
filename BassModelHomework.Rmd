@@ -1,0 +1,124 @@
+---
+title: "Homework 1. Bass Model"
+author: "Sate Antaranyan"
+date: "2024-02-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+Innovation I chose is LG Signature OLED M Television. This tv has one cable for power and no inputs or outputs like other tvs.
+
+The look-alike innovation from the past I chose is LCD television. I chose LCD tv because it's a television like the LG Signature OLED M Television. This tv uses liquid crystal display, has advantages that are - it consumes less power than plasma displays, it is compact, thin. I wanted the look-alike innovation to also have some kind of advantages as the LG one focuses on its advantage, which is having only one cable and so it brings comfort to its customers, while the LCD one focuses on bringing comfort by being thin and using less power which results in small heat emitted during operation.
+
+I found a TV sales in Germany dataset that has LCD TV sales from 2005-2022.I added a sheet in the dataset with just the LCD TV sales column and the year column. 
+```{r}
+library(readxl)
+library(ggplot2)
+library(ggpubr)
+library(diffusion)
+```
+
+Reading the data.
+```{r}
+lcd <- read_excel('tv-set-sales.xlsx')
+lcd
+```
+Plotting the data.
+```{r}
+sales = ggplot(data = lcd, aes(x=Year,y=`LCD TV`)) +
+  geom_bar(stat = 'identity') +
+  ggtitle('LCD TV Sales in Germany')
+
+sales
+```
+Defining f(t) and F(t)
+```{r}
+bass.f <- function(t,p,q){
+  ((p+q)^2/p)*exp(-(p+q)*t)/
+    (1+(q/p)*exp(-(p+q)*t))^2
+  }
+
+bass.F <- function(t,p,q){ (1-exp(-(p+q)*t))/
+    (1+(q/p)*exp(-(p+q)*t))
+  }
+```
+Adoptions and Cumulative Adoptions
+```{r}
+c_adopt = ggplot(data = lcd, aes(x =Year, y = `LCD TV`)) +
+  stat_function(fun = bass.F, args = c(p = 0.002, q = 0.21))+
+  labs(title = "LCD net sales - cumulative adoptions")
+
+t_adopt = ggplot(data = lcd, aes(x = Year, y = `LCD TV`)) +
+  stat_function(fun = bass.f, args = c(p = 0.002, q = 0.21))+
+  labs(title = "LCD net sales - adoptions at time t")
+
+ggarrange(c_adopt, t_adopt, sales, ncol = 1)
+```
+The same plots just plotted without the Sales in Germany plot because it's more visible this way.
+```{r}
+ggarrange(c_adopt, t_adopt)
+```
+Changing the q parameter.
+```{r}
+c_adopt = ggplot(data = lcd, aes(x =Year, y = `LCD TV`)) +
+  stat_function(fun = bass.F, args = c(p = 0.002, q = 0.41))+
+  labs(title = "LCD net sales - cumulative adoptions")
+
+t_adopt = ggplot(data = lcd, aes(x = Year, y = `LCD TV`)) +
+  stat_function(fun = bass.f, args = c(p = 0.002, q = 0.41))+
+  labs(title = "LCD net sales - adoptions at time t")
+ggarrange(c_adopt, t_adopt)
+```
+The "diffusion" library helps to estimate the Bass model parameters. 
+```{r}
+diff_m = diffusion(lcd$`LCD TV`)
+p=round(diff_m$w,4)[1]
+q=round(diff_m$w,4)[2]
+m=round(diff_m$w,4)[3]
+diff_m
+```
+
+Parameter Estimation using Non-linear Least Squares
+```{r}
+sales = lcd$`LCD TV`
+t = 1:length(sales)
+bass_m = nls(sales ~ m*(((p+q)**2/p)*exp(-(p+q)*t))/
+               (1+(q/p)*exp(-(p+q)*t))**2,
+             start=c(list(m=sum(sales),p=0.02,q=0.4)),control=nls.control(maxiter = 100, minFactor = 1/1024, printEval = TRUE, warnOnly = TRUE))
+bass_m
+```
+```{r}
+lcd$pred_sales = bass.f(1:length(sales), p = 2.853e-02, q = 1.473e-01) * 9.499e+04
+ggplot(data = lcd, aes(x = Year, y = `LCD TV`)) +
+  geom_bar(stat = 'identity') +
+  geom_point(mapping = aes(x = Year, y = `LCD TV`), color = 'pink')
+```
+```{r}
+innovation_prediction <- bass.f(1:50, p = 2.853e-02, q = 1.473e-01) * 9.499e+04
+years <- seq(from = 2021, to = 2021 + 49, by = 1)
+innovation_data <- data.frame(Year = years, Sales = innovation_prediction)
+
+ggplot(data = innovation_data, aes(x = Year, y = Sales)) +
+  geom_bar(stat='identity', fill = 'lightblue') + ylab("Sales (In million $)")
+```
+The LG Signature OLED TV has different sizes 97 inch, 83, inch, 77 inch. I calculated the average price and got 12460 euros. I've got the information that OLED TVs are making up 738k of the whole 5.5 million units shipped.
+```{r} 
+average_price <- 12460
+oled_shipments <- 738000
+revenue_oled <- average_price * oled_shipments
+total_revenue_oled <- 5500000000  
+market_share <- revenue_oled / total_revenue_oled
+total_market_size <- total_revenue_oled / market_share
+```
+
+```{r}
+cumulative_adopters <- cumsum(innovation_data$Sales)
+new_adopters <- c(cumulative_adopters[1], diff(cumulative_adopters))
+estimated_adopters = data.frame(Year = years, New_Adopters = new_adopters, Market_Share = market_share)
+estimated_adopters
+```
+The last estimations are done worldwide. 
+
+Reference:
+Average price for plasma screen and LCD TV sets sold in Germany from 2005 to 2022 (in euros) Retrieved from Statista on 20th February 2024. 
+https://www.statista.com/statistics/462655/plasma-and-lcd-tvs-average-prices-germany/
